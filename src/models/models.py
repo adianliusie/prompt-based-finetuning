@@ -74,24 +74,19 @@ class PromptFinetuning(torch.nn.Module):
         trans_output = self.transformer(
             input_ids=input_ids,
             attention_mask=attention_mask,
+            output_hidden_states=True
         )
         
         # select MLM probs of the masked positions, only for the label ids
         mask_pos_logits = trans_output.logits[torch.arange(input_ids.size(0)), mask_positions]
         logits = mask_pos_logits[:, tuple(self.label_ids)]
-        
-        # DEBUGGING 
-        #from .tokenizers import load_tokenizer
-        #tokenizer = load_tokenizer('bert-base')
-        #x = tokenizer.decode(input_ids[0])
-        #print(x)
-        #import time; time.sleep(3)
+        h = trans_output.hidden_states[-1][torch.arange(input_ids.size(0)), mask_positions]
 
         return SimpleNamespace(
-            h = None, 
+            h = h, 
             logits=logits
         )
-
+        
     def update_label_words(self, label_words:str):
         self.label_ids = [self.tokenizer(word).input_ids[1] for word in label_words]
 

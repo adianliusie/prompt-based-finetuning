@@ -132,56 +132,53 @@ class Evaluator(Trainer):
         return 100*acc
 
     #== loading and caching hidden representations ================================================#
-    def load_layer_h(self, dataset:str=None, mode:str='test', layer:int=11, lim:int=None)->dict:
-        h_path = self.get_h_path(dataset, mode, layer)
+    def load_representations(self, dataset:str=None, mode:str='test')->dict:
+        h_path = self.get_h_path(dataset, mode)
 
         if not os.path.isfile(h_path):
             self.setup_helpers()
-            layer_repr = self.generate_h(dataset, mode, layer)
-            self.cache_h(layer_repr, dataset, mode, layer)
+            output_vectors = self.generate_h(dataset, mode)
+            self.cache_h(output_vectors, dataset, mode)
 
-        layer_repr = self.load_cached_h(dataset, mode, layer)
-        return layer_repr 
+        output_vectors = self.load_cached_h(dataset, mode)
+        return output_vectors 
 
     @torch.no_grad()
-    def generate_h(self, dataset:str=None, mode:str='test', layer:int=None, lim:int=None):
-        #prepare data for cases where data_name is given
-        data = self.data_handler.prep_split(dataset, mode=mode, lim=lim)
-
-        #create batches
-        eval_batches = self.batcher(data=data, bsz=1, shuffle=False)
-        
-        self.to(self.device)
+    def generate_h(self, dataset:str=None, mode:str='test', lim:int=None):
+        # set up model
         self.model.eval()
+        self.to(self.device)
+
+        # prepare data and batches
+        eval_data = self.data_handler.prep_split(data_name=dataset, mode=mode, lim=lim)
+        eval_batches = self.batcher(
+            data = eval_data, 
+            bsz = 1, 
+            shuffle = False
+        )
 
         #get output vectors
         output_dict = {}
         for batch in tqdm(eval_batches):
             ex_id = batch.ex_id[0]
-            output = self.model.transformer(
-                input_ids=batch.input_ids, 
-                attention_mask=batch.attention_mask,
-                output_hidden_states=True
-            )
-            H = output.hidden_states[layer]
-            output_dict[ex_id] = H[:, 0].squeeze(0).cpu().numpy()
+            output = self.model_loss(batch)
+            output_dict[ex_id] = output.h.squeeze(0).cpu().numpy()
             
         return output_dict
 
-    def get_h_path(self, dataset:str, mode:str, layer:int)->str:
-        CACHE_PATH = '/home/al826/rds/hpc-work/2022/shortcuts/spurious-nlp/notebooksl/inear_probe/cached_h'
-        layer = layer % 12
-        repr_path = os.path.join(CACHE_PATH, f'{dataset}_{mode}_{layer}.pk')
-        return repr_path
+    def get_h_path(self, dataset:str, mode:str)->str:
+        eval_name = f'{dataset}_{mode}'
+        vector_path = os.path.join(self.exp_path, 'eval', f'{eval_name}_h.pk')
+        return vector_path
 
-    def cache_h(self, h, dataset, mode, layer):
-        cache_h_path = self.get_h_path(dataset, mode, layer)
+    def cache_h(self, h, dataset, mode):
+        cache_h_path = self.get_h_path(dataset, mode)
         with open(cache_h_path, 'wb') as handle:
             pickle.dump(h, handle)
     
     def load_cached_h(self, dataset:str, mode:str):
-        pred_path = self.get_pred_path(dataset, mode)
-        with open(pred_path, 'rb') as handle:
+        cache_h_path = self.get_h_path(dataset, mode)
+        with open(cache_h_path, 'rb') as handle:
             h = pickle.load(handle)
         return h
 

@@ -51,6 +51,13 @@ class Trainer(object):
     def train(self, args: namedtuple):
         self.save_args('train_args.json', args)
  
+        # save model at the start, in case never better
+        self.save_model()
+
+        # if zero shot break
+        if args.lim == 0 and args.lim is not None:
+            return 
+            
         # set up optimization objects
         optimizer = torch.optim.AdamW(
             self.model.parameters(), 
